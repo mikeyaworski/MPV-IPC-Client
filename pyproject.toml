@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "MPV-IPC-client"
+version = "0.1.0"
+description = "Python client for interacting with MPV instance via IPC"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "mikeyaworski" }]
+dependencies = [
+  "pywin32 <= 311; platform_system == 'Windows'"
+]
+
+[tool.setuptools]
+py-modules = ["mpv_ipc_client"]
