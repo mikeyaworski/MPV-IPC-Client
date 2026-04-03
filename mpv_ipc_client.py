@@ -249,13 +249,14 @@ class MpvIpcClient:
     for command in commands:
       self.send_command(command, **kwargs)
 
-  def set_property(self, name: str, args: list[JsonValue] = []):
+  def set_property(self, name: str, args: JsonValue | list[JsonValue] = []):
     '''
     Sends a command to MPV to set a property.
     Args:
         name (str): The name of the property to set (e.g. 'pause', 'playlist-pos', etc.)
-        args (list[JsonValue]): The value(s) to set the property to. This will be unpacked into the command.
+        args (JsonValue | list[JsonValue]): The value(s) to set the property to. This will be unpacked into the command.
     '''
+    if not isinstance(args, list): args = [args]
     command = ['set_property', name] + args
     self.send_command(command)
 
