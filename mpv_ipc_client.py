@@ -353,7 +353,7 @@ class MpvIpcClient:
       ['playlist-remove', current_pos],
     ])
 
-  def get_file_paths(self, is_playlist: bool):
+  def get_file_paths(self, is_playlist: bool) -> list[str] | None:
     '''
     Gets the file paths of the current playlist or current file.
     Args:
