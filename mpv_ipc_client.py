@@ -2,7 +2,7 @@ import json
 import argparse
 import os
 import sys
-from typing import Final, TYPE_CHECKING
+from typing import Any, Callable, Final, TYPE_CHECKING
 
 JsonValue = str | int | float | bool
 Command = list[JsonValue]
@@ -260,6 +260,26 @@ class MpvIpcClient:
     command = ['set_property', name] + args
     self.send_command(command)
 
+  @staticmethod
+  def parse_command_response(response: dict, get_error_msg: Callable[[str], str] | None = None) -> tuple[Any, bool]:
+    '''
+    Parses the response from a command sent to MPV.
+    Checks the `error` field to determine if the command was successful.
+    Args:
+        response (dict): The return value from send_command()
+        get_error_msg (Callable[[str], str] | None): Optional function to construct a user-friendly error message based on the error status.
+    Returns:
+        tuple[Any, bool]: A tuple containing the `data` field of the response (or `None` if there was an error), and a boolean indicating success.
+          `data` may be `None` even if the command was successful.
+    '''
+    error_status = response.get('error')
+    if error_status is None: raise RuntimeError(f'Unexpected response format: {response}')
+    if error_status == 'success':
+      return response.get('data'), True
+    error_msg = get_error_msg(error_status) if get_error_msg else f'Error: {error_status}'
+    print(error_msg, file=sys.stderr)
+    return None, False
+
   def get_property(self, property_name: str):
     '''
     Get the value of a specific property from the MPV instance.
@@ -275,11 +295,11 @@ class MpvIpcClient:
     if not response:
       print(f'No response for get_property {property_name}', file=sys.stderr)
       return None
-    error_status = response.get('error')
-    if error_status == 'success':
-      return response.get('data')
-    print(f'Error getting {property_name}: {error_status}', file=sys.stderr)
-    return None
+    data, success = self.parse_command_response(
+      response,
+      get_error_msg=lambda error_status: f'Error getting "{property_name}": {error_status}',
+    )
+    return data
 
   ###################################################################
   ### Above this line are methods core to the client API.         ###
