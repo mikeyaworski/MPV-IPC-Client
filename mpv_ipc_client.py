@@ -280,7 +280,7 @@ class MpvIpcClient:
     print(error_msg, file=sys.stderr)
     return None, False
 
-  def get_property(self, property_name: str):
+  def get_property(self, property_name: str, force_string: bool = False):
     '''
     Get the value of a specific property from the MPV instance.
     Sends a command to get the property and processes the response.
@@ -288,12 +288,14 @@ class MpvIpcClient:
 
     Args:
         property_name (str): The name of the property to get (e.g. 'pause', 'playlist-pos', etc.)
+        force_string (bool): Whether to force the property value to be returned as a string.
     Returns:
         The value of the property (`data` field of the response) if successful, or `None` if there was an error.
     '''
-    response = self.send_command(['get_property', property_name])
+    command_name = 'get_property_string' if force_string else 'get_property'
+    response = self.send_command([command_name, property_name])
     if not response:
-      print(f'No response for get_property {property_name}', file=sys.stderr)
+      print(f'No response for {command_name} {property_name}', file=sys.stderr)
       return None
     data, success = self.parse_command_response(
       response,
