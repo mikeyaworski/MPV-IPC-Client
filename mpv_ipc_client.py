@@ -249,16 +249,26 @@ class MpvIpcClient:
     for command in commands:
       self.send_command(command, **kwargs)
 
-  def set_property(self, name: str, args: JsonValue | list[JsonValue] = []):
+  def set_property(self, property_name: str, args: JsonValue | list[JsonValue] = []) -> bool:
     '''
     Sends a command to MPV to set a property.
     Args:
-        name (str): The name of the property to set (e.g. 'pause', 'playlist-pos', etc.)
+        property_name (str): The name of the property to set (e.g. 'pause', 'playlist-pos', etc.)
         args (JsonValue | list[JsonValue]): The value(s) to set the property to. This will be unpacked into the command.
+    Returns:
+        bool: True if the command was successful, False otherwise.
     '''
     if not isinstance(args, list): args = [args]
-    command = ['set_property', name] + args
-    self.send_command(command)
+    command = ['set_property', property_name] + args
+    response = self.send_command(command)
+    if not response:
+      print(f'No response for {command}', file=sys.stderr)
+      return False
+    _, success = self.parse_command_response(
+      response,
+      get_error_msg=lambda error_status: f'Error setting "{property_name}": {error_status}',
+    )
+    return success
 
   @staticmethod
   def parse_command_response(response: dict, get_error_msg: Callable[[str], str] | None = None) -> tuple[Any, bool]:
