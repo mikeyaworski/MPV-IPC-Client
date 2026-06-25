@@ -18,7 +18,7 @@ else:
 
 # Always visible to type checker since it doesn't work well with the IS_WINDOWS condition.
 if TYPE_CHECKING:
-  import win32file  
+  import win32file
   import socket
 
 class MpvIpcClient:
