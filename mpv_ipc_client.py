@@ -239,7 +239,7 @@ class MpvIpcClient:
     try:
       command_bytes = self._get_command_bytes(command, request_id)
       if IS_WINDOWS: win32file.WriteFile(self._conn, command_bytes)
-      else: self._conn.send(command_bytes)
+      else: self._conn.sendall(command_bytes)
       return self.read_response_for_request_id(request_id)
     except Exception as e:
       print(f'Error sending command to mpv: {e}', file=sys.stderr)
