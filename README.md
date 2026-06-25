@@ -1,7 +1,7 @@
 # MPV IPC Client
 
 This is a (Python) client for interacting with an MPV instance via IPC.
-The MPV instance is responsible (likely via a client script) for constructing the IPC server path (named pipe on Windows, Unix socket on Linxu/macOS).
+The MPV instance is responsible (likely via a client script) for constructing the IPC server path (named pipe on Windows, Unix socket on Linux/macOS).
 
 ## Installation / Local Development
 
