@@ -23,44 +23,68 @@ if TYPE_CHECKING:
 
 class MpvIpcClient:
   '''
-  Singleton class that manages a connection to the MPV IPC server (server path provided via CLI argument).
-  Establish the connection, send commands, read responses and close the connection.
+  A connection to an MPV IPC server. Send commands, read responses and close the connection.
 
   Usage:
+      Connect to the server whose path is given via CLI argument (one shared instance per process):
       ```python
-      client = MpvIpcClient(arg_name='--ipc-server', should_panic=True)
+      client = MpvIpcClient.from_args(arg_name='--ipc-server', should_panic=True)
       client.set_property('title', ['Hello World'])
       client.close_connection()
       ```
 
+      Connect to a server at a known path (e.g. one this script started MPV with):
+      ```python
+      with MpvIpcClient(ipc_server_path, quiet=True) as client:
+        if client.connected:
+          client.send_command(['seek', 10, 'absolute'])
+      ```
+
   Args:
-      arg_name (str): Name of CLI argument to read the IPC server location. Defaults to `--ipc-server`
-      should_panic (bool): Whether to exit the program if the connection cannot be established.
+      ipc_server_path (str | None): The path to the MPV IPC server (e.g. from the `--input-ipc-server` argument).
+        If `None`, the client is created without a connection.
+      quiet (bool): Whether to skip printing an error if the connection cannot be established.
   '''
 
-  _instance = None
+  # Shared instance returned by from_args()
+  _instance: 'MpvIpcClient | None' = None
 
   # Read one character at a time until we see a newline character.
   # This is the only way we know when a message is complete.
   # Reading more than one character runs the risk of reading into the next message.
   _RECV_BUFFER_SIZE = 1
 
-  def __new__(cls, **kwargs):
-    if cls._instance is None: 
-      cls._instance = super().__new__(cls)
-      cls._instance._initialized = False
-    return cls._instance
-
-  def __init__(self, **kwargs):
-    if self._initialized: return
-    self._conn_, self._ipc_server_path = self._get_ipc_connection_from_args(**kwargs)
+  def __init__(self, ipc_server_path: str | None, *, quiet: bool = False):
+    self._ipc_server_path = ipc_server_path
+    self._conn_ = self._get_ipc_connection(ipc_server_path, quiet=quiet) if ipc_server_path else None
     self._request_id_counter = 0
-    self._initialized = True
+
+  @classmethod
+  def from_args(cls, arg_name: str = '--ipc-server', *, should_panic: bool = False) -> 'MpvIpcClient':
+    '''
+    Returns the shared client for the MPV IPC server whose path is given via CLI argument.
+    The first call connects and later calls return the same client (even after it is disconnected).
+
+    Args:
+        arg_name (str): Name of CLI argument to read the IPC server location. Defaults to `--ipc-server`
+        should_panic (bool): Whether to exit the program if the connection cannot be established.
+    '''
+    if cls._instance is None:
+      parser = argparse.ArgumentParser()
+      parser.add_argument(arg_name, type=str, help='Socket to make commands to MPV instance')
+      args, unknown = parser.parse_known_args()
+      ipc_server_path = getattr(args, arg_name.lstrip('-').replace('-', '_'), None)
+      cls._instance = cls(ipc_server_path)
+    if should_panic and not cls._instance.connected:
+      print('Failed to connect to MPV', file=sys.stderr)
+      input('Press Enter to exit...')
+      exit(1)
+    return cls._instance
 
   @property
   def connected(self):
     return self._conn_ is not None
-  
+
   @property
   def ipc_server_path(self):
     return self._ipc_server_path
@@ -75,18 +99,25 @@ class MpvIpcClient:
     return self._conn_
 
   def __repr__(self):
-    return f"<MpvIpcClient singleton, connected={self.connected}>"
+    return f"<MpvIpcClient path={self._ipc_server_path!r}, connected={self.connected}>"
 
-  def _get_ipc_connection(self, ipc_server_path: str):
+  def __enter__(self):
+    return self
+
+  def __exit__(self, *exc_info):
+    self.disconnect()
+
+  def _get_ipc_connection(self, ipc_server_path: str, *, quiet: bool = False):
     '''
     Establishes a connection to the MPV IPC server at the given path.
-    The path should be created by the MPV client (e.g. by a client script) and passed to this script.
     The path will be a named pipe on Windows, or a Unix socket on Linux/macOS.
 
     Args:
         ipc_server_path (str): The path to the MPV IPC server (e.g. from the `--input-ipc-server` argument).
+        quiet (bool): Whether to skip printing an error if the connection cannot be established.
     Returns:
         A Windows file handle on Windows, or a socket object on Linux/macOS.
+        `None` if the connection could not be established.
     '''
     try:
       if IS_WINDOWS:
@@ -102,51 +133,38 @@ class MpvIpcClient:
       else:
         # Unix socket
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.connect(ipc_server_path)
+        try:
+          sock.connect(ipc_server_path)
+        except Exception:
+          sock.close()
+          raise
         return sock
     except Exception as e:
-      print(f'Error communicating with mpv: {e}', file=sys.stderr)
+      if not quiet: print(f'Error communicating with mpv: {e}', file=sys.stderr)
       return None
 
-  def _get_ipc_connection_from_args(self, arg_name: str = '--ipc-server', *, should_panic=False):
+  def disconnect(self):
     '''
-    Parses the CLI arguments to find the location of the IPC server.
-
-    Args:
-        Find details in the documentation for the MpvIpcClient constructor.
-    Returns:
-        The connection to the IPC server (Windows file handle or Unix socket), and the IPC server path.
+    Closes this client's connection to the MPV IPC server.
+    MPV's IPC server keeps running, so the same path can be connected to again.
+    Does nothing if not connected.
     '''
-    parser = argparse.ArgumentParser()
-    parser.add_argument(arg_name, type=str, help='Socket to make commands to MPV instance')
-    args, unknown = parser.parse_known_args()
-    ipc_server_arg = getattr(args, arg_name.lstrip('-').replace('-', '_'), None)
-    if ipc_server_arg:
-      return self._get_ipc_connection(ipc_server_arg), ipc_server_arg
-    if should_panic:
-      print('Failed to connect to MPV', file=sys.stderr)
-      input('Press Enter to exit...')
-      exit(1)
-    else:
-      return None, ipc_server_arg
+    if not self.connected: return
+    try:
+      if IS_WINDOWS: win32file.CloseHandle(self._conn_)
+      else: self._conn_.close()
+    except Exception as e:
+      print(f'Error closing connection: {e}', file=sys.stderr)
+    self._conn_ = None
 
   def close_connection(self):
     '''
-    Closes the connection to the MPV IPC server.
-    Deletes the --input-ipc-server property on the MPV instance.
-    MPV will close the connection on its end as a result.
+    Deletes the --input-ipc-server property on the MPV instance, which shuts down MPV's IPC server
+    (MPV closes every connection on its end as a result), and then closes this client's connection.
+    Use disconnect() instead to leave the IPC server running.
     '''
     self.set_property('input-ipc-server', [''])
-    try:
-      if IS_WINDOWS:
-        win32file.CloseHandle(self._conn)
-      else:
-        # On Unix, don't explicitly close the socket; MPV will close it when disabling IPC.
-        # conn.close()
-        pass
-      self._conn_ = None
-    except Exception as e:
-      print(f'Error closing connection: {e}', file=sys.stderr)
+    self.disconnect()
 
   def _get_next_request_id(self):
     self._request_id_counter += 1

@@ -22,9 +22,22 @@ The MPV instance is responsible (likely via a client script) for constructing th
 ```python
 from mpv_ipc_client import MpvIpcClient
 
-mpv_ipc_client = MpvIpcClient(arg_name='--mpv-ipc-server', should_panic=True)
+mpv_ipc_client = MpvIpcClient.from_args(arg_name='--mpv-ipc-server', should_panic=True)
 mpv_ipc_client.pause()
 mpv_ipc_client.close_connection()
+```
+
+`MpvIpcClient.from_args()` reads the IPC server path from a CLI argument and returns one shared client per process.
+`close_connection()` also shuts down the MPV instance's IPC server.
+
+To connect to an IPC server at a known path (e.g. an MPV instance your script launched with its own `--input-ipc-server`), construct the client directly. Each instance is an independent connection, and `disconnect()` (called automatically by `with`) closes it while leaving MPV's IPC server running, so the path can be connected to again later:
+
+```python
+from mpv_ipc_client import MpvIpcClient
+
+with MpvIpcClient(ipc_server_path, quiet=True) as mpv_ipc_client:
+  if mpv_ipc_client.connected:
+    mpv_ipc_client.send_command(['seek', 10, 'absolute'])
 ```
 
 ### MPV instance client script
